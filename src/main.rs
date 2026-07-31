@@ -4,7 +4,7 @@ use nix::{
     mount::{MntFlags, MsFlags, mount, umount2},
     sched::{CloneFlags, clone},
     sys::{signal::Signal, wait::waitpid},
-    unistd::{chdir, execve, pivot_root, sethostname},
+    unistd::{Pid, chdir, execve, pivot_root, sethostname},
 };
 
 fn main() {
@@ -68,8 +68,17 @@ fn main() {
         child_pid
     );
 
+    if let Err(e) = setup_cgroups(child_pid) {
+        eprintln!("=> Failed to set up cgroups: {}", e);
+    } else {
+        println!("=> Cgroups configured: Memory restricted to 100MB, CPU restricted to 20%");
+    }
+
     // 5. Wait for the container to exit before closing the host process.
     waitpid(child_pid, None).expect("Failed to wait for child");
+
+    let _ = fs::remove_dir("/sys/fs/cgroup/lokalit_container");
+
     println!(
         "=> Container stopped. Host hostname remains: {}",
         get_hostname()
@@ -118,6 +127,25 @@ fn setup_filesystem(rootfs_path: &Path) -> Result<(), Box<dyn Error>> {
         Some("proc"),
         MsFlags::empty(),
         None::<&str>,
+    )?;
+
+    Ok(())
+}
+
+fn setup_cgroups(child_pid: Pid) -> Result<(), Box<dyn Error>> {
+    let cgroup_path = Path::new("/sys/fs/cgroup/lokalit_container");
+
+    if !cgroup_path.exists() {
+        fs::create_dir(cgroup_path)?;
+    }
+
+    fs::write(cgroup_path.join("memory.max"), "100000000")?;
+
+    fs::write(cgroup_path.join("cpu.max"), "20000 100000")?;
+
+    fs::write(
+        cgroup_path.join("cgroup.procs"),
+        child_pid.as_raw().to_string(),
     )?;
 
     Ok(())
