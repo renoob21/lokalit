@@ -1,4 +1,4 @@
-use std::{ffi::CString, fs, path::Path};
+use std::{ffi::CString, path::Path, thread, time::Duration};
 
 use nix::{
     sched::{CloneFlags, clone},
@@ -6,7 +6,11 @@ use nix::{
     unistd::{execve, sethostname},
 };
 
-use crate::{cgroups::setup_cgroups, filesystem::setup_filesystem};
+use crate::{
+    cgroups::{cleanup_cgroups, setup_cgroups},
+    filesystem::setup_filesystem,
+    network::{cleanup_network, setup_network},
+};
 
 mod cgroups;
 mod filesystem;
@@ -52,6 +56,9 @@ fn main() {
             CString::new("TERM=xterm").unwrap(),
         ];
 
+        println!("=> Waiting for network setup...");
+        thread::sleep(Duration::from_secs(1));
+
         match execve(&shell, &args, &env) {
             Ok(_) => unreachable!("execve replaces the process and never returns on success"),
             Err(e) => {
@@ -82,10 +89,17 @@ fn main() {
         println!("=> Cgroups configured: Memory restricted to 100MB, CPU restricted to 20%");
     }
 
+    if let Err(e) = setup_network(child_pid) {
+        eprintln!("=> Failed to setup network: {}", e);
+    } else {
+        println!("Network configured (Container IP: 10.0.0.2)")
+    }
+
     // 5. Wait for the container to exit before closing the host process.
     waitpid(child_pid, None).expect("Failed to wait for child");
 
-    let _ = fs::remove_dir("/sys/fs/cgroup/lokalit_container");
+    cleanup_cgroups();
+    cleanup_network();
 
     println!(
         "=> Container stopped. Host hostname remains: {}",

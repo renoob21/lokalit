@@ -20,3 +20,8 @@ pub fn setup_cgroups(child_pid: Pid) -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+pub fn cleanup_cgroups() {
+    let _ = fs::remove_dir("/sys/fs/cgroup/lokalit_container");
+    println!("=> CGroups setting cleaned");
+}
