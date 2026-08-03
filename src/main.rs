@@ -9,14 +9,14 @@ use nix::{
 use crate::{
     cgroups::{cleanup_cgroups, setup_cgroups},
     filesystem::setup_filesystem,
-    filtering::apply_seccomp_filter,
     network::{cleanup_network, setup_network},
+    security::{apply_seccomp_filter, drop_privileges},
 };
 
 mod cgroups;
 mod filesystem;
-mod filtering;
 mod network;
+mod security;
 
 fn main() {
     println!("=> Host process started. (Host: {})", get_hostname());
@@ -48,6 +48,14 @@ fn main() {
         if let Err(e) = setup_filesystem(rootfs_path) {
             eprintln!("Filesystem setup failed: {}", e);
             return -1;
+        }
+
+        println!("=> Dropping Linux Capabilities...");
+        if let Err(e) = drop_privileges() {
+            eprintln!("=> Failed to drop capabilities: {}", e);
+            return -1;
+        } else {
+            println!("=> Linux capabilities successfully dropped")
         }
 
         println!("=> Applying seccomp security filters...");
