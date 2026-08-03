@@ -9,11 +9,13 @@ use nix::{
 use crate::{
     cgroups::{cleanup_cgroups, setup_cgroups},
     filesystem::setup_filesystem,
+    filtering::apply_seccomp_filter,
     network::{cleanup_network, setup_network},
 };
 
 mod cgroups;
 mod filesystem;
+mod filtering;
 mod network;
 
 fn main() {
@@ -46,6 +48,14 @@ fn main() {
         if let Err(e) = setup_filesystem(rootfs_path) {
             eprintln!("Filesystem setup failed: {}", e);
             return -1;
+        }
+
+        println!("=> Applying seccomp security filters...");
+        if let Err(e) = apply_seccomp_filter() {
+            eprintln!("=> Failed to load seccomp filter: {}", e);
+            return -1;
+        } else {
+            println!("=> Successfully applying seccomp filter")
         }
 
         let shell = CString::new("/bin/sh").expect("Failed to create CString");
@@ -92,7 +102,7 @@ fn main() {
     if let Err(e) = setup_network(child_pid) {
         eprintln!("=> Failed to setup network: {}", e);
     } else {
-        println!("Network configured (Container IP: 10.0.0.2)")
+        println!("=> Network configured (Container IP: 10.0.0.2)")
     }
 
     // 5. Wait for the container to exit before closing the host process.
